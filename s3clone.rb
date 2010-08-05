@@ -187,11 +187,6 @@ def check_args(args)
   if args.length < 2
     return false
   else
-#    args.each { |arg|
-#      if arg.split(":")[1].nil?
-#        return false
-#      end   
-#    }
     return true
   end
 end
@@ -217,8 +212,7 @@ else
       upload_list = compare_buckets(buckets[0], bucket)
       if not upload_list.empty?
         download_incremental(upload_list, buckets_prefix)
-        puts "Downloaded the incremental elements"
-        puts upload_list.inspect
+        puts "** Incremental elements downloaded"
         upload_list.each { |element|
           if not is_a_directory(element[:path])
             upload_element_to_bucket(element, buckets_prefix)         
