@@ -87,6 +87,12 @@ def is_a_directory(key)
 end
 
 def store_file(raw_file, path)
+  if not File.directory?(File.dirname(path))
+    File.mkdir_p File.dirname(path)
+  end
+  if File.directory?(path)
+    path = "#{path}_S3TMPFILE"
+  end
   File.open(path, 'w') { |f|
     f.write(raw_file)
   }
@@ -137,33 +143,35 @@ def upload_element_to_bucket(element, buckets_prefix)
                                              element[:mime]
                                              )
 
-  File.open("#{buckets_prefix}/#{element[:target_bucket]}#{request_url}", 'r') { |f|
-    c.http_put(f)
-  }
+  if File.file?("#{buckets_prefix}/#{element[:target_bucket]}#{request_url}")
+    File.open("#{buckets_prefix}/#{element[:target_bucket]}#{request_url}", 'r') { |f|
+      c.http_put(f)
+    }
+  else
+    File.open("#{buckets_prefix}/#{element[:target_bucket]}#{request_url}_S3TMPFILE", 'r') { |f|
+      c.http_put(f)
+    }
+  end
 end
 
 def compare_buckets(source_bucket, target_bucket)
   incremental_list = Array.new
   source_bucket[:bucket_data].each { |source_element|
-    if target_bucket[:bucket_data].empty?
+    updateable = true
+    target_bucket[:bucket_data].each { |target_element|
+      if source_element[:path] == target_element[:path] && source_element[:type] == target_element[:type]
+        if Time.parse(source_element[:modified]) <= Time.parse(target_element[:modified])
+          updateable = false
+          break
+        end
+      end
+    }
+    if updateable
       incremental_list << {:source_bucket => source_bucket[:bucket_name],
                            :target_bucket => target_bucket[:bucket_name],
                            :type => source_element[:type],
                            :path => source_element[:path]
                           }
-    else
-      target_bucket[:bucket_data].each { |target_element|
-        if target_element.has_value?(source_element[:path]) && 
-           Time.parse(source_element[:modified]) <= Time.parse(target_element[:modified])
-          # do nothing
-        else
-          incremental_list << {:source_bucket => source_bucket[:bucket_name],
-                               :target_bucket => target_bucket[:bucket_name],
-                               :type => source_element[:type],
-                               :path => source_element[:path]
-                              }
-        end
-      }
     end
   }
   return incremental_list
