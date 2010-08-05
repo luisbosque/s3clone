@@ -217,7 +217,7 @@ buckets.each { |bucket|
   if not buckets[0] == bucket
     upload_list = compare_buckets(buckets[0], bucket)
     if not upload_list.empty?
-      download_incremental(upload_list, buckets_prefix)
+      download_incremental(upload_list.sort_by {|element| element[:type]}.reverse, buckets_prefix)
       puts "** Incremental elements downloaded"
       upload_list.each { |element|
         if not is_a_directory(element[:path])
