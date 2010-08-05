@@ -184,7 +184,7 @@ def download_incremental(incremental_list, buckets_prefix)
 end
 
 def check_args(args)
-  if args.length < 2
+  if args.nil? || args.empty? || args.length < 2
     return false
   else
     return true
@@ -195,31 +195,28 @@ buckets_prefix = 'buckets'
 FileUtils.rm_rf buckets_prefix
 FileUtils.mkdir_p buckets_prefix
 
-if ARGV.empty?
-  process_request('/')
-else
-  if not check_args(ARGV) 
-    usage
-    exit 1
-  end
-  buckets = Array.new
 
-  ARGV.each { |arg|
-    buckets << {:bucket_name => arg, :bucket_data => process_request(arg)}
-  }
-  buckets.each { |bucket|
-    if not buckets[0] == bucket
-      upload_list = compare_buckets(buckets[0], bucket)
-      if not upload_list.empty?
-        download_incremental(upload_list, buckets_prefix)
-        puts "** Incremental elements downloaded"
-        upload_list.each { |element|
-          if not is_a_directory(element[:path])
-            upload_element_to_bucket(element, buckets_prefix)         
-          end
-        }
-      end
-    end
-  }
+if not check_args(ARGV) 
+  usage
+  exit 1
 end
+buckets = Array.new
+
+ARGV.each { |arg|
+  buckets << {:bucket_name => arg, :bucket_data => process_request(arg)}
+}
+buckets.each { |bucket|
+  if not buckets[0] == bucket
+    upload_list = compare_buckets(buckets[0], bucket)
+    if not upload_list.empty?
+      download_incremental(upload_list, buckets_prefix)
+      puts "** Incremental elements downloaded"
+      upload_list.each { |element|
+        if not is_a_directory(element[:path])
+          upload_element_to_bucket(element, buckets_prefix)         
+        end
+      }
+    end
+  end
+}
 
