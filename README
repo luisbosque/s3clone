@@ -1,0 +1,4 @@
+This code is still in development process.
+Right now, the s3clone tool is working for making a simple S3 bucket clone to another empty bucket.
+It's not suitable for production use.
+You can use it at your own risk.
