@@ -57,11 +57,11 @@ def get_signature(date_to_sign, canonicalized_resource, request_method, content_
   return b64_hmac
 end
 
-def send_request(request_url, request_method='GET', headers = {})
+def send_request(request_url, attributes = '', request_method='GET', headers = {})
   canonicalized_resource = get_canonicalized_resource(request_url)
 
   host = headers[:Host] || REQUEST_HOST
-  c = Curl::Easy.new(host + request_url)
+  c = Curl::Easy.new(host + request_url + attributes)
   c.headers["Host"] = host
   c.headers["Date"] = Time.now.httpdate
   if headers["Content-Type"]
@@ -121,7 +121,7 @@ end
 
 def process_request(bucket_name)
   url = "/" + bucket_name + "/"
-  aws_response = send_request(url)
+  aws_response = send_request(url, "?max-keys=10000")
   puts aws_response.header_str if DEBUG
   return parse_aws_response(aws_response.body_str)
 end
