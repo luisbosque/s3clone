@@ -102,6 +102,7 @@ def parse_aws_response(raw_xml)
   bucket = Array.new
   xml = Nokogiri::XML(raw_xml)
   current_bucket = xml.css("ListBucketResult Name")[0].text
+  truncated = xml.css("ListBucketResult IsTruncated")[0].text
 
   contents = xml.css("Contents")
   contents.each { |node|
@@ -116,14 +117,31 @@ def parse_aws_response(raw_xml)
     content_hash[:path] = key.text
     bucket << content_hash
   }
-  return bucket
+  puts "TRUNC: #{truncated}"
+  if truncated == "true"
+    puts "TRUNCATED"
+    return bucket, bucket[-1][:path]
+  else
+    return bucket, false
+  end
 end
 
 def process_request(bucket_name)
-  url = "/" + bucket_name + "/"
-  aws_response = send_request(url, "?max-keys=10000")
-  puts aws_response.header_str if DEBUG
-  return parse_aws_response(aws_response.body_str)
+  bucket = Array.new
+  marker = ''
+  while marker
+    if marker && !marker.empty?
+      attributes = "?marker=#{marker}"
+    else
+      attributes  = ''
+    end
+    url = "/" + bucket_name + "/"
+    aws_response = send_request(url, attributes)
+    puts aws_response.header_str if DEBUG
+    aux_bucket, marker = parse_aws_response(aws_response.body_str)
+    bucket = bucket + aux_bucket
+  end
+  return bucket
 end
 
 def upload_element_to_bucket(element, buckets_prefix)
@@ -204,8 +222,6 @@ def download_incremental(incremental_list, buckets_prefix)
       FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{File.dirname(element[:path])}"
       aws_response_acl = send_request("/" + element[:source_bucket] + "/" + element[:path] + "?acl")
       element[:acl] = aws_response_acl.body_str
-#      puts Nokogiri::XML(aws_response_acl.body_str)
-#      puts element[:path]      
       aws_response = send_request("/" + element[:source_bucket] + "/" + element[:path])
       element[:mime] = aws_response.header_str.match(/Content-Type: (.*)$/)[1].strip      
       store_file(aws_response.body_str, "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}")
