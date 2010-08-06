@@ -154,6 +154,24 @@ def upload_element_to_bucket(element, buckets_prefix)
   end
 end
 
+def update_acl(element)
+  request_url = "/#{element[:path]}?acl"
+  canonicalized_resource = get_canonicalized_resource("/" + element[:target_bucket] + request_url)
+  
+  host = element[:target_bucket] + "." + REQUEST_HOST
+  c = Curl::Easy.new(host + request_url)
+  c.headers["Host"] = host
+  c.headers["Date"] = Time.now.httpdate
+  c.headers["Authorization"] = "AWS " + 
+                               AWS_ACCESS_KEY_ID + ":" +
+                               get_signature(c.headers["Date"],
+                                             canonicalized_resource,
+                                             "PUT",
+                                             ""
+                                             )
+  c.http_put(element[:acl])
+end
+
 def compare_buckets(source_bucket, target_bucket)
   incremental_list = Array.new
   source_bucket[:bucket_data].each { |source_element|
@@ -184,6 +202,10 @@ def download_incremental(incremental_list, buckets_prefix)
       FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}"
     else
       FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{File.dirname(element[:path])}"
+      aws_response_acl = send_request("/" + element[:source_bucket] + "/" + element[:path] + "?acl")
+      element[:acl] = aws_response_acl.body_str
+#      puts Nokogiri::XML(aws_response_acl.body_str)
+#      puts element[:path]      
       aws_response = send_request("/" + element[:source_bucket] + "/" + element[:path])
       element[:mime] = aws_response.header_str.match(/Content-Type: (.*)$/)[1].strip      
       store_file(aws_response.body_str, "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}")
@@ -222,6 +244,9 @@ buckets.each { |bucket|
       upload_list.each { |element|
         if not is_a_directory(element[:path])
           upload_element_to_bucket(element, buckets_prefix)         
+          if not element[:acl].nil?
+            update_acl(element)
+          end
         end
       }
     end
