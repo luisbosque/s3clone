@@ -82,7 +82,7 @@ def send_request(request_url, attributes = '', request_method='GET', headers = {
     print "#{request_url} download failed. "
     if download_attempt < 3
       puts "Trying again..."
-      download_try = download_attempt + 1
+      download_attempt = download_attempt + 1
       retry
     else
       puts "Giving up."
@@ -176,15 +176,31 @@ def upload_element(element, buckets_prefix)
                                              element[:mime]
                                              )
 
+  
   if File.file?("#{buckets_prefix}/#{element[:target_bucket]}#{request_url}")
-    File.open("#{buckets_prefix}/#{element[:target_bucket]}#{request_url}", 'r') { |f|
-      c.http_put(f)
-    }
+    filename = "#{buckets_prefix}/#{element[:target_bucket]}#{request_url}"
   else
-    File.open("#{buckets_prefix}/#{element[:target_bucket]}#{request_url}_S3TMPFILE", 'r') { |f|
-      c.http_put(f)
-    }
+    filename = "#{buckets_prefix}/#{element[:target_bucket]}#{request_url}_S3TMPFILE"
   end
+  
+  upload_attempt = 0
+  File.open(filename, 'r') { |f|
+    begin
+      c.http_put(f)
+    rescue Curl::Err::GotNothingError
+      print "#{request_url} download failed. "
+      if upload_attempt < 3
+        puts "Trying again..."
+        upload_attempt = upload_attempt + 1
+        retry
+      else
+        puts "Giving up."
+        c = nil
+      end    
+    end                   
+  }    
+  return c
+  
 end
 
 def update_acl(element)
@@ -201,8 +217,22 @@ def update_acl(element)
                                              canonicalized_resource,
                                              "PUT",
                                              ""
-                                             )
-  c.http_put(element[:acl])
+                                             ) 
+  update_acl_attempt = 0
+  begin
+    c.http_put(element[:acl])
+  rescue Curl::Err::GotNothingError
+    print "#{request_url} acl update failed. "
+    if update_acl_attempt < 3
+      puts "Trying again..."
+      update_acl_attempt = update_acl_attempt + 1
+      retry
+    else
+      puts "Giving up."
+      c = nil
+    end    
+  end                       
+  return c
 end
 
 def compare_buckets(source_bucket, target_bucket)
