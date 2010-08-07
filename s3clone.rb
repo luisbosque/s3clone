@@ -25,6 +25,7 @@ AWS_ACCESS_KEY_ID = ENV['AWS_ACCESS_KEY_ID']
 AWS_SECRET_ACCESS_KEY = ENV['AWS_SECRET_ACCESS_KEY']
 REQUEST_HOST = 's3.amazonaws.com'
 DEBUG = false
+STDOUT.sync = true
 
 def CanonicalizedAmzHeaders
   return ''
@@ -112,10 +113,11 @@ def parse_aws_response(raw_xml)
       content_hash[:type] = "D"
     else
       content_hash[:type] = "A"
+      bucket << content_hash      
     end
     content_hash[:modified] = node.css("LastModified").first.text
     content_hash[:path] = key.text
-    bucket << content_hash
+#    bucket << content_hash
   }
   puts "TRUNC: #{truncated}"
   if truncated == "true"
@@ -192,26 +194,48 @@ end
 
 def compare_buckets(source_bucket, target_bucket)
   incremental_list = Array.new
+  path_search_array = target_bucket[:bucket_data].collect { |element| element[:path]}
+  modified_search_array = target_bucket[:bucket_data].collect { |element| element[:modified]}  
   source_bucket[:bucket_data].each { |source_element|
     updateable = true
-    target_bucket[:bucket_data].each { |target_element|
-      if source_element[:path] == target_element[:path] && source_element[:type] == target_element[:type]
-        if Time.parse(source_element[:modified]) <= Time.parse(target_element[:modified])
-          updateable = false
-          break
-        end
+    if element_position = path_search_array.index(source_element[:path])
+      if Time.parse(source_element[:modified]) <= Time.parse(modified_search_array[element_position])
+        updateable = false
       end
-    }
+    end
     if updateable
       incremental_list << {:source_bucket => source_bucket[:bucket_name],
                            :target_bucket => target_bucket[:bucket_name],
                            :type => source_element[:type],
                            :path => source_element[:path]
-                          }
+                          }    
     end
   }
   return incremental_list
 end
+
+#def compare_buckets(source_bucket, target_bucket)
+#  incremental_list = Array.new
+#  source_bucket[:bucket_data].each { |source_element|
+#    updateable = true
+#    target_bucket[:bucket_data].each { |target_element|
+#      if source_element[:path] == target_element[:path] && source_element[:type] == target_element[:type]
+#        if Time.parse(source_element[:modified]) <= Time.parse(target_element[:modified])
+#          updateable = false
+#          break
+#        end
+#      end
+#    }
+#    if updateable
+#      incremental_list << {:source_bucket => source_bucket[:bucket_name],
+#                           :target_bucket => target_bucket[:bucket_name],
+#                           :type => source_element[:type],
+#                           :path => source_element[:path]
+#                          }
+#    end
+#  }
+#  return incremental_list
+#end
 
 def download_incremental(incremental_list, buckets_prefix)
   FileUtils.mkdir_p "#{buckets_prefix}/#{incremental_list[0][:target_bucket]}"
@@ -249,14 +273,17 @@ end
 buckets = Array.new
 
 ARGV.each { |arg|
+  puts "Fetching bucket #{arg} elements"
   buckets << {:bucket_name => arg, :bucket_data => process_request(arg)}
 }
 buckets.each { |bucket|
   if not buckets[0] == bucket
+    puts "Comparing buckets"
     upload_list = compare_buckets(buckets[0], bucket)
     if not upload_list.empty?
+      puts "Downloading incremental elements"
       download_incremental(upload_list.sort_by {|element| element[:type]}.reverse, buckets_prefix)
-      puts "** Incremental elements downloaded"
+      puts "Uploading incremental elements"
       upload_list.each { |element|
         if not is_a_directory(element[:path])
           upload_element_to_bucket(element, buckets_prefix)         
