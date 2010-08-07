@@ -227,45 +227,6 @@ def compare_buckets(source_bucket, target_bucket)
   return incremental_list
 end
 
-#def compare_buckets(source_bucket, target_bucket)
-#  incremental_list = Array.new
-#  source_bucket[:bucket_data].each { |source_element|
-#    updateable = true
-#    target_bucket[:bucket_data].each { |target_element|
-#      if source_element[:path] == target_element[:path] && source_element[:type] == target_element[:type]
-#        if Time.parse(source_element[:modified]) <= Time.parse(target_element[:modified])
-#          updateable = false
-#          break
-#        end
-#      end
-#    }
-#    if updateable
-#      incremental_list << {:source_bucket => source_bucket[:bucket_name],
-#                           :target_bucket => target_bucket[:bucket_name],
-#                           :type => source_element[:type],
-#                           :path => source_element[:path]
-#                          }
-#    end
-#  }
-#  return incremental_list
-#end
-
-#def download_incremental(incremental_list, buckets_prefix)
-#  FileUtils.mkdir_p "#{buckets_prefix}/#{incremental_list[0][:target_bucket]}"
-#  incremental_list.each { |element|
-#    if is_a_directory(element[:path])
-#      FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}"
-#    else
-#      FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{File.dirname(element[:path])}"
-#      aws_response_acl = send_request("/" + element[:source_bucket] + "/" + element[:path] + "?acl")
-#      element[:acl] = aws_response_acl.body_str
-#      aws_response = send_request("/" + element[:source_bucket] + "/" + element[:path])
-#      element[:mime] = aws_response.header_str.match(/Content-Type: (.*)$/)[1].strip      
-#      store_file(aws_response.body_str, "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}")
-#    end    
-#  } 
-#end
-
 def check_args(args)
   if args.nil? || args.empty? || args.length < 2
     return false
@@ -338,24 +299,3 @@ buckets.each { |bucket|
     end
   end
 }
-
-#buckets.each { |bucket|
-#  if not buckets[0] == bucket
-#    puts "Comparing buckets"
-#    upload_list = compare_buckets(buckets[0], bucket)
-#    if not upload_list.empty?
-#      puts "Downloading incremental elements"
-#      download_incremental(upload_list.sort_by {|element| element[:type]}.reverse, buckets_prefix)
-#      puts "Uploading incremental elements"
-#      upload_list.each { |element|
-#        if not is_a_directory(element[:path])
-#          upload_element_to_bucket(element, buckets_prefix)         
-#          if not element[:acl].nil?
-#            update_acl(element)
-#          end
-#        end
-#      }
-#    end
-#  end
-#}
-
