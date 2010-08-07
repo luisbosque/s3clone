@@ -75,7 +75,20 @@ def send_request(request_url, attributes = '', request_method='GET', headers = {
                                              request_method,
                                              headers["Content-Type"].nil? ? '' : headers["Content-Type"]
                                              )
-  c.perform
+  download_attempt = 0
+  begin
+    c.perform
+  rescue Curl::Err::GotNothingError
+    print "#{request_url} download failed. "
+    if download_attempt < 3
+      puts "Trying again..."
+      download_try = download_attempt + 1
+      retry
+    else
+      puts "Giving up."
+      c = nil
+    end    
+  end                       
   return c
 end
 
@@ -146,7 +159,7 @@ def process_request(bucket_name)
   return bucket
 end
 
-def upload_element_to_bucket(element, buckets_prefix)
+def upload_element(element, buckets_prefix)
   request_url = "/#{element[:path]}"
   canonicalized_resource = get_canonicalized_resource("/" + element[:target_bucket] + request_url)
   
@@ -237,21 +250,21 @@ end
 #  return incremental_list
 #end
 
-def download_incremental(incremental_list, buckets_prefix)
-  FileUtils.mkdir_p "#{buckets_prefix}/#{incremental_list[0][:target_bucket]}"
-  incremental_list.each { |element|
-    if is_a_directory(element[:path])
-      FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}"
-    else
-      FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{File.dirname(element[:path])}"
-      aws_response_acl = send_request("/" + element[:source_bucket] + "/" + element[:path] + "?acl")
-      element[:acl] = aws_response_acl.body_str
-      aws_response = send_request("/" + element[:source_bucket] + "/" + element[:path])
-      element[:mime] = aws_response.header_str.match(/Content-Type: (.*)$/)[1].strip      
-      store_file(aws_response.body_str, "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}")
-    end    
-  } 
-end
+#def download_incremental(incremental_list, buckets_prefix)
+#  FileUtils.mkdir_p "#{buckets_prefix}/#{incremental_list[0][:target_bucket]}"
+#  incremental_list.each { |element|
+#    if is_a_directory(element[:path])
+#      FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}"
+#    else
+#      FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{File.dirname(element[:path])}"
+#      aws_response_acl = send_request("/" + element[:source_bucket] + "/" + element[:path] + "?acl")
+#      element[:acl] = aws_response_acl.body_str
+#      aws_response = send_request("/" + element[:source_bucket] + "/" + element[:path])
+#      element[:mime] = aws_response.header_str.match(/Content-Type: (.*)$/)[1].strip      
+#      store_file(aws_response.body_str, "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}")
+#    end    
+#  } 
+#end
 
 def check_args(args)
   if args.nil? || args.empty? || args.length < 2
@@ -259,6 +272,45 @@ def check_args(args)
   else
     return true
   end
+end
+
+def download_element(element, buckets_prefix)
+  FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{File.dirname(element[:path])}"
+  aws_response = send_request("/" + element[:source_bucket] + "/" + element[:path])
+  if aws_response.nil?
+    return false
+  else
+    element[:mime] = aws_response.header_str.match(/Content-Type: (.*)$/)[1].strip      
+    store_file(aws_response.body_str, "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}")    
+    return true
+  end
+end
+
+def download_element_acl(element)
+  aws_response_acl = send_request("/" + element[:source_bucket] + "/" + element[:path] + "?acl")
+  if aws_response_acl
+    element[:acl] = aws_response_acl.body_str
+  end
+end
+
+def sync_elements(elements, buckets_prefix)
+  FileUtils.mkdir_p "#{buckets_prefix}/#{elements[0][:target_bucket]}"
+  elements.each { |element|
+    puts "Syncing #{element[:path]}"
+    if is_a_directory(element[:path])
+      FileUtils.mkdir_p "#{buckets_prefix}/#{element[:target_bucket]}/#{element[:path]}"
+    else
+      if download_element(element, buckets_prefix)      
+        if not is_a_directory(element[:path])
+          upload_element(element, buckets_prefix)
+          download_element_acl(element)            
+          if not element[:acl].nil?
+            update_acl(element)
+          end          
+        end
+      end
+    end
+  }
 end
 
 buckets_prefix = 'buckets'
@@ -281,18 +333,29 @@ buckets.each { |bucket|
     puts "Comparing buckets"
     upload_list = compare_buckets(buckets[0], bucket)
     if not upload_list.empty?
-      puts "Downloading incremental elements"
-      download_incremental(upload_list.sort_by {|element| element[:type]}.reverse, buckets_prefix)
-      puts "Uploading incremental elements"
-      upload_list.each { |element|
-        if not is_a_directory(element[:path])
-          upload_element_to_bucket(element, buckets_prefix)         
-          if not element[:acl].nil?
-            update_acl(element)
-          end
-        end
-      }
+      puts "Syncing elements"
+      sync_elements(upload_list.sort_by {|element| element[:type]}.reverse, buckets_prefix)
     end
   end
 }
+
+#buckets.each { |bucket|
+#  if not buckets[0] == bucket
+#    puts "Comparing buckets"
+#    upload_list = compare_buckets(buckets[0], bucket)
+#    if not upload_list.empty?
+#      puts "Downloading incremental elements"
+#      download_incremental(upload_list.sort_by {|element| element[:type]}.reverse, buckets_prefix)
+#      puts "Uploading incremental elements"
+#      upload_list.each { |element|
+#        if not is_a_directory(element[:path])
+#          upload_element_to_bucket(element, buckets_prefix)         
+#          if not element[:acl].nil?
+#            update_acl(element)
+#          end
+#        end
+#      }
+#    end
+#  end
+#}
 
