@@ -78,7 +78,7 @@ def send_request(request_url, attributes = '', request_method='GET', headers = {
   download_attempt = 0
   begin
     c.perform
-  rescue Curl::Err::GotNothingError
+  rescue
     print "#{request_url} download failed. "
     if download_attempt < 3
       puts "Trying again..."
@@ -187,7 +187,7 @@ def upload_element(element, buckets_prefix)
   File.open(filename, 'r') { |f|
     begin
       c.http_put(f)
-    rescue Curl::Err::GotNothingError
+    rescue
       print "#{request_url} download failed. "
       if upload_attempt < 3
         puts "Trying again..."
@@ -221,7 +221,7 @@ def update_acl(element)
   update_acl_attempt = 0
   begin
     c.http_put(element[:acl])
-  rescue Curl::Err::GotNothingError
+  rescue
     print "#{request_url} acl update failed. "
     if update_acl_attempt < 3
       puts "Trying again..."
